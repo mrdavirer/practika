@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Практика</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container mt-3 col-md-6">
+        <div class="input-group mb-3">
+            <input type="text" class="form-control" placeholder="Введите cartinka или text-site" id="keywordInput">
+            <input type="submit" class="btn btn-primary" value="Найти" id="searchButton">
+        </div>
+        <ul class="list-group mb-3" id="urlList"></ul>
+        <div class="progress mb-3">
+            <div id="progressBar" class="progress-bar" role="progressbar" style="width: 0%;">0%</div>
+        </div>
+        <h2 class="text-center">Скачанный контент</h2>
+        <ul class="list-group" id="contentList"></ul>
+    </div>
+
+    <script>
+        const searchButton = document.getElementById("searchButton");
+        const keywordInput = document.getElementById("keywordInput");
+        const urlList = document.getElementById("urlList");
+        const progressBar = document.getElementById("progressBar");
+        const contentList = document.getElementById("contentList");
+
+        searchButton.addEventListener("click", () => searchAndDisplayUrls());
+        keywordInput.addEventListener("keypress", (event) => {
+            if (event.key === "Enter") {
+                searchAndDisplayUrls();
+            }
+        });
+
+        async function searchAndDisplayUrls() {
+            const keyword = keywordInput.value;
+            if (!keyword) return;
+            const urls = await getUrls(keyword);
+            if (urls) {
+                displayUrls(urls);
+            }
+        }
+
+        async function getUrls(keyword) {
+            keywordInput.value = "";
+            try {
+                const response = await fetch(`/search/${keyword}`);
+                if (response.ok) {
+                    const urls = await response.json();
+                    return urls;
+                } else {
+                    alert("Ошибка, попробуйте еще раз. Введите cartinka или text-site");
+                }
+            } catch (error) {
+                alert(`Ошибка: ${error.message}`);
+            }
+        }
+
+        function displayUrls(urls) {
+            urlList.innerHTML = "";
+            urls.forEach(url => {
+                const li = document.createElement("li");
+                li.className = "list-group-item cursor-pointer";
+                li.textContent = url;
+                li.addEventListener("click", () => downloadContentWithProgress(url));
+                urlList.appendChild(li);
+            });
+        }
+
+        async function downloadContentWithProgress(url) {
+            try {
+                const eventSource = new EventSource(`/download/${encodeURIComponent(url)}`);
+                eventSource.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    if (data.progress) {
+                        progressBar.style.width = data.progress + "%";
+                        progressBar.textContent = data.progress + "%";
+                    }
+                    if (data.progress === 100) {
+                        setTimeout(() => {
+                            progressBar.style.width = "0%";
+                            progressBar.textContent = "0%";
+                        }, 5000);
+                    }
+                    if (data.content) {
+                        localStorage.setItem(url, data.content);
+                        displayContent(url, data.content);
+                        eventSource.close();
+                    }
+                };
+                eventSource.onerror = function(event) {
+                    console.error("EventSource error:", event);
+                    eventSource.close();
+                };
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        }
+
+        function displayContent(url, content) {
+            const li = document.createElement("li");
+            li.className = "list-group-item cursor-pointer";
+            li.textContent = url;
+            li.addEventListener("click", () => {
+                const storedContent = localStorage.getItem(url);
+                if (storedContent) {
+                    const newWindow = window.open();
+                    newWindow.document.write("<html><head><title>Content</title></head><body>");
+                    newWindow.document.write(`<pre>${storedContent}</pre>`);
+                    newWindow.document.write("</body></html>");
+                }
+            });
+            contentList.appendChild(li);
+        }
+    </script>
+</body>
+</html>
